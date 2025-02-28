@@ -91,11 +91,13 @@ const addRecipe = (entry: recipe, res: Response) => {
       requiredItems.add(item.name);
     }
   }
+
   const newRecipe: recipe = { 
     type: entry.type, 
     name: entry.name,
     requiredItems: entry.requiredItems,
   };
+
   cookbook.push(newRecipe);
   return res.status(200).json({});
 }
@@ -110,6 +112,7 @@ const addIngredient = (entry: ingredient, res: Response) => {
     name: entry.name,
     cookTime: entry.cookTime,
   };
+
   cookbook.push(newIngredient);
   return res.status(200).json({});
 }
@@ -118,18 +121,20 @@ const addIngredient = (entry: ingredient, res: Response) => {
 // Endpoint that returns a summary of a recipe that corresponds to a query name
 app.get("/summary", (req:Request, res:Request) => {
   // TODO: implement me
-  // res.status(500).send("not yet implemented!")
   const targetRecipeName = req.query.name as string;
+
   const recipeIndex = cookbook.findIndex(recipe => recipe.name === targetRecipeName);
   if (recipeIndex === -1) {
     return res.status(400).json({ error: 'recipe with given name not found' });
   }
+
   if (cookbook[recipeIndex].type === 'ingredient') {
     return res.status(400).json({ error: 'searched name is not name of recipe' });
   }
 
-  const recipeSummary = [];
-  // for bfs, treating recipes as parent nodes and their requiredItems as child nodes
+  // for bfs, treating recipes as parent nodes and their requiredItems as child nodes -> leaf nodes are basically ingredients 
+  let totalCookTime = 0;
+  const ingredientMap = new Map();
   const queue = [];
   queue.push(cookbook[recipeIndex].name);
   
@@ -139,16 +144,44 @@ app.get("/summary", (req:Request, res:Request) => {
 
     if (tempIndex === -1) {
       return res.status(400).json({ error: 'recipe contains recipe/ingredient not in cookbook' });
-    } 
-    recipeSummary.push(cookbook[tempIndex]);
-    if (cookbook[tempIndex].type === 'recipe') {
-      // force typescript to recognise cookbook[tempIndex] as recipe rather than either recipe or ingredient
-      let currRecipe = cookbook[tempIndex] as recipe;
-      for (const requiredItem of currRecipe.requiredItems) {
-        queue.push(requiredItem.name);
+    }
+
+    if (cookbook[tempIndex].type === 'ingredient') {
+      const currIngredient = cookbook[tempIndex] as ingredient;
+      totalCookTime += currIngredient.cookTime;
+      if (ingredientMap.has(cookbook[tempIndex].name)) {
+        ingredientMap.set(currIngredient.name, 1 + ingredientMap.get(currIngredient.name));
+      } else {
+        ingredientMap.set(cookbook[tempIndex].name, 1);
       }
     }
+
+    if (cookbook[tempIndex].type === 'recipe') {
+      let currRecipe = cookbook[tempIndex] as recipe;
+      
+      for (const requiredItem of currRecipe.requiredItems) {
+        for (let i = 0; i < requiredItem.quantity; i++) {
+          queue.push(requiredItem.name);
+        }
+      }
+    }
+
   }
+  
+  const ingredientsList = []
+  for (const [itemName, numItem] of ingredientMap) {
+    ingredientsList.push({ 
+      name: itemName,
+      quantity: numItem,
+    });
+  }
+
+  const recipeSummary = {
+    name: targetRecipeName,
+    cookTime: totalCookTime,
+    ingredients: ingredientsList,
+  };
+
   return res.status(200).json(recipeSummary);
 });
 
